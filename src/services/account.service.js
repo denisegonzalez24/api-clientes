@@ -10,7 +10,7 @@ const ecommerce = {
 
 export async function desvincularCuenta(body) {
 
-    const { provider } = body.ecommerce;
+    const provider = body.tienda;
 
     if (!provider) {
         throw new CustomException({
