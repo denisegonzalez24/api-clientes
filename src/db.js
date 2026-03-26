@@ -2,7 +2,11 @@ import { logRed } from "lightdata-tools";
 import mysql2 from 'mysql2/promise'
 import redis from 'redis';
 import dotenv from "dotenv";
+import axios from "axios";
 dotenv.config();
+
+
+
 //cagar config
 
 let companiesList = {};
@@ -32,11 +36,19 @@ export const redisClient = redis.createClient({
     password: redisPassword,
 });
 
+redisClient.on("error", (err) => {
+    console.error("Redis error:", err);
+});
+
+await redisClient.connect();
+
 async function loadCompaniesFromRedis() {
+    console.log('Cargando compañías desde Redis...');
     try {
         const companiesListString = await redisClient.get('empresasData');
 
         companiesList = JSON.parse(companiesListString);
+        console.log('Compañías cargadas desde Redis:');
 
     } catch (error) {
         logRed(`Error en loadCompaniesFromRedis: ${error.stack}`);
@@ -75,7 +87,7 @@ const pools = new Map();
 /**
  * Obtiene (o crea si no existe) un pool para una empresa.
  */
-export function getPool(didEmpresa) {
+export async function getPool(didEmpresa) {
     if (pools.has(didEmpresa)) {
         return pools.get(didEmpresa);
     }
@@ -94,11 +106,11 @@ export function getPool(didEmpresa) {
             pools.delete(key);
         }
     }
-    const company = getCompanyById(didEmpresa);
+    const company = await getCompanyById(didEmpresa);
     // pasar comany
     const config = getProdDbConfig(company);
 
-    const pool = mysql.createPool({
+    const pool = mysql2.createPool({
         ...config,
         waitForConnections: true,
         connectionLimit: 3,
@@ -130,4 +142,19 @@ export function getPoolProduccion() {
         database: process.env.NAME_MICRO_PRODUCCION
     });
     return poolProduccion;
+}
+
+
+export async function poolPreenvios() {
+
+    const con = mysql2.createPool({
+        host: process.env.PREENVIOS_DB_HOST,
+        user: process.env.PREENVIOS_DB_USER,
+        password: process.env.PREENVIOS_DB_PASSWORD,
+        database: process.env.PREENVIOS_DB_NAME,
+        waitForConnections: true,
+        connectionLimit: 1,
+        queueLimit: 0
+    });
+    return con
 }
