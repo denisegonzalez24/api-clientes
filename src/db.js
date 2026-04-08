@@ -145,9 +145,14 @@ export function getPoolProduccion() {
 }
 
 
-export async function poolPreenvios() {
+let preenviosPool;
 
-    const con = mysql2.createPool({
+export async function poolPreenvios() {
+    if (preenviosPool) {
+        return preenviosPool;
+    }
+
+    preenviosPool = mysql2.createPool({
         host: process.env.PREENVIOS_DB_HOST,
         user: process.env.PREENVIOS_DB_USER,
         password: process.env.PREENVIOS_DB_PASSWORD,
@@ -156,5 +161,26 @@ export async function poolPreenvios() {
         connectionLimit: 1,
         queueLimit: 0
     });
-    return con
+
+    return preenviosPool;
+}
+
+export async function closeAllPools() {
+    const closePromises = [];
+
+    for (const pool of pools.values()) {
+        closePromises.push(pool.end());
+    }
+
+    closePromises.push(poolProduccion.end());
+
+    if (preenviosPool) {
+        closePromises.push(preenviosPool.end());
+    }
+
+    await Promise.allSettled(closePromises);
+
+    if (redisClient.isOpen) {
+        await redisClient.quit();
+    }
 }

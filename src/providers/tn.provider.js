@@ -3,6 +3,7 @@
 import { CustomException, executeQueryFromPool } from "lightdata-tools";
 import { getPool, getPoolProduccion, poolPreenvios } from "../db.js";
 import axios from "axios";
+import { exec } from "child_process";
 
 
 // conectarme a cuentasArgs e insertar info en preenvios sobre esto
@@ -63,7 +64,7 @@ export class TnProvider {
                 // elim = 1 en tn_clientes_args
 
                 const sqlDesvincular = `UPDATE tn_clientes_argentina SET elim = 1 WHERE id = ?`;
-                //    await executeQueryFromPool({ pool: connection, query: sqlDesvincular, values: [resultCuentasTn[0].id], log: true });
+                await executeQueryFromPool({ pool: connection, query: sqlDesvincular, values: [resultCuentasTn[0].id], log: true });
 
                 //nueva pool poor empresa
 
@@ -75,7 +76,7 @@ export class TnProvider {
 
                 //elimino de la empresa y elimino la cuenta de tn en produccion
                 const desvincularCLientesCuentas = `UPDATE clientes_cuentas SET sync_woo = 0 WHERE tn_id = ? and did = ? and elim = 0 and superado = 0;`;
-                //       await executeQueryFromPool({ pool: poolEmpresa, query: desvincularCLientesCuentas, values: [seller_id, didCuenta], log: true });
+                await executeQueryFromPool({ pool: poolEmpresa, query: desvincularCLientesCuentas, values: [seller_id, didCuenta], log: true });
 
 
 
@@ -87,7 +88,7 @@ export class TnProvider {
                 const token = dataPreenvios[0].token;
 
                 const sqlDesvincularPreenvios = `UPDATE cuentas SET elim = 1 WHERE didEmpresa = ? and didCliente = ? and  didCuenta = ? and elim = 0 and superado = 0; `;
-                //    const resultPreenvios = await executeQueryFromPool({ pool: conexionPreenvios, query: sqlDesvincularPreenvios, values: [didEmpresa, didCliente, didCuenta], log: true });
+                const resultPreenvios = await executeQueryFromPool({ pool: conexionPreenvios, query: sqlDesvincularPreenvios, values: [didEmpresa, didCliente, didCuenta], log: true });
 
 
                 let webhooksTn
@@ -135,6 +136,7 @@ export class TnProvider {
                         console.log("elimine webhook", webhook.id, webhook.url);
                         const result = await deleteWebhook(webhook.id, storeId, resultCuentasTn[0].token);
                         console.log("resultado eliminacion webhook", result);
+
                     }
                 }
 
@@ -146,8 +148,9 @@ export class TnProvider {
                 for (const metodo of metodosDeEnvioTn) {
                     if (metodo.name.includes(`Flex_${didEmpresa}`) && metodo.callback_url.includes(`_${didCuenta}.php`)) {
                         console.log("elimine metodo de envio", metodo.id, metodo.name);
-                        const result = await deleteShippingMethod(metodo.id, storeId, resultCuentasTn[0].token);
-                        console.log("resultado eliminacion metodo de envio", result);
+                        await deleteShippingMethod(metodo.id, storeId, resultCuentasTn[0].token);
+                        await executeQueryFromPool({ pool: poolEmpresa, query: 'UPDATE clientes_cuentas_metodos_envios SET elim = 1 WHERE didcuenta = ? AND sellerId = ? AND tiendaURL = ?', values: [didCuenta, seller_id, metodo.callback_url], log: true });
+
                     }
                 }
 
@@ -180,6 +183,67 @@ export class TnProvider {
             const sql = `SELECT * from tn_clientes_argentina WHERE seller_id = ? AND superado = 0 and elim = 0;`;
             const resultCuentasTn = await executeQueryFromPool({ pool: connection, query: sql, values: [seller_id], log: true });
             return resultCuentasTn;
+        } catch (error) {
+            console.error("ERROR MYSQL:", error.message);
+            console.error(error);
+            throw error;
+        }
+
+
+
+    }
+
+    async vincularCuenta(body) {
+        const { seller_id, didEmpresa, didCuenta } = body;
+        try {
+
+            const connection = getPoolProduccion();
+            const sql = `SELECT * from tn_clientes_argentina WHERE seller_id = ? AND didEmpresa = ? AND didCuenta = ? AND superado = 0;`;
+            const resultCuentasTn = await executeQueryFromPool({ pool: connection, query: sql, values: [seller_id, didEmpresa, didCuenta], log: true });
+
+            if (resultCuentasTn[0].elim === 0) {
+                throw new CustomException({
+                    title: "Cuenta ya vinculada",
+                    message: `La cuenta ya está vinculada a esta empresa con el cliente: ${resultCuentasTn[0].didCliente}`
+                });
+            }
+
+            //verificar que existe el cliente con un select a tabla clientes
+            if (resultCuentasTn.length === 0) {
+                throw new CustomException({
+                    title: "Cliente no encontrado",
+                    message: "No existe un cliente de Tiendanube para vincular con esos datos"
+                });
+            }
+
+
+            const poolEmpresa = await getPool(didEmpresa);
+            const sqlVincularEmpresa = `UPDATE clientes_cuentas SET sync_woo = 1 WHERE tn_id = ? AND did = ? AND elim = 0 AND superado = 0;`;
+            await executeQueryFromPool({ pool: poolEmpresa, query: sqlVincularEmpresa, values: [seller_id, didCuenta], log: true });
+
+
+            const conexionPreenvios = await poolPreenvios();
+            const sqlVincularPreenvios = `INSERT INTO cuentas SET elim = 0 WHERE didEmpresa = ? AND didCuenta = ? AND superado = 0 AND elim = 1;`;
+            await executeQueryFromPool({ pool: conexionPreenvios, query: sqlVincularPreenvios, values: [didEmpresa, didCuenta], log: true });
+
+
+            // pegarle a clientes-args y hacer algo
+
+
+            // token del cliente
+
+
+            // crear wehooks de tn - guardar
+
+
+            // crear metodos de envios - guardar  | si corresponde tambien en tabla clientes_cuentas_metodos_envio
+
+            // insertar datos en tn_clientes_argentina y updatear al final
+            //   const sqlVincularTn = `INSERT INTO tn_clientes_argentina (seller_id, didEmpresa, didCuenta,token, superado) VALUES (?, ?, ?, 0) ON DUPLICATE KEY UPDATE elim = 0;`;
+            await executeQueryFromPool({ pool: connection, query: sqlVincularTn, values: [seller_id, didEmpresa, didCuenta, token], log: true });
+
+
+            return { message: "Cuenta vinculada exitosamente" };
         } catch (error) {
             console.error("ERROR MYSQL:", error.message);
             console.error(error);

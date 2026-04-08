@@ -1,9 +1,11 @@
 import { CustomException } from "lightdata-tools";
 import { TnProvider } from "../providers/tn.provider.js";
+import { FenicioProvider } from "../providers/fenicio.provider.js";
 
 
 const ecommerce = {
     tn: new TnProvider(),
+    fenicio: new FenicioProvider(),
     // ml: new MlProvider(),
     // shopify: new ShopifyProvider()
 };
@@ -53,4 +55,43 @@ export async function getCuentas(body) {
     }
 
     return await selectedProvider.getCuentas(body.seller_id);
-}   
+}
+
+export async function vincularCuenta(body) {
+
+    const provider = body.tienda;
+
+    if (!provider) {
+        throw new CustomException({
+            message: 'Debe especificarse un ecommerce para vincular la cuenta',
+            title: 'Ecommerce requerido'
+        });
+    }
+
+    const selectedProvider = ecommerce[provider];
+
+    if (!selectedProvider) {
+        throw new CustomException({
+            message: `Provider no soportado: ${provider}`,
+            title: 'Ecommerce no soportado'
+        });
+    }
+
+    return await selectedProvider.vincularCuenta(body);
+}
+
+export async function vincularCuentaJson(body) {
+
+    const provider = body.tienda;
+
+    const selectedProvider = ecommerce[provider];
+
+    if (!selectedProvider) {
+        throw new CustomException({
+            message: `Provider no soportado: ${provider}`,
+            title: 'Ecommerce no soportado'
+        });
+    }
+
+    return await selectedProvider.vincularCuentaJson(body);
+}

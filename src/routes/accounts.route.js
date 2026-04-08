@@ -1,5 +1,5 @@
 import express from 'express';
-import { desvincularCuenta, getCuentas } from '../services/account.service.js';
+import { desvincularCuenta, getCuentas, vincularCuenta, vincularCuentaJson } from '../services/account.service.js';
 
 
 const accountRoutes = express.Router();
@@ -32,6 +32,18 @@ accountRoutes.post('/cuentas', async (req, res) => {
     res.json({ respuesta });
 }
 );
+
+accountRoutes.post('/vincularCuenta', async (req, res) => {
+
+    const respuesta = await vincularCuenta(req.body);
+    res.json({ respuesta });
+});
+
+accountRoutes.post('/vincularCuentaJson', async (req, res) => {
+
+    const respuesta = await vincularCuentaJson(req.body);
+    res.json({ respuesta });
+});
 
 export default accountRoutes;
 
